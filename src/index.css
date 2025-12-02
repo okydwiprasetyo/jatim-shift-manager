@@ -17,8 +17,9 @@ All colors MUST be HSL.
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    /* Bank Jatim primary blue */
+    --primary: 217 91% 35%;
+    --primary-foreground: 0 0% 100%;
 
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
@@ -34,24 +35,27 @@ All colors MUST be HSL.
 
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --ring: 217 91% 35%;
 
     --radius: 0.5rem;
 
+    /* Shift colors */
+    --shift-pagi: 48 96% 53%;
+    --shift-pagi-foreground: 222.2 84% 4.9%;
+    --shift-sore: 199 89% 48%;
+    --shift-sore-foreground: 0 0% 100%;
+    --shift-malam: 142 71% 45%;
+    --shift-malam-foreground: 0 0% 100%;
+    --shift-off: 0 84% 60%;
+    --shift-off-foreground: 0 0% 100%;
+
     --sidebar-background: 0 0% 98%;
-
     --sidebar-foreground: 240 5.3% 26.1%;
-
     --sidebar-primary: 240 5.9% 10%;
-
     --sidebar-primary-foreground: 0 0% 98%;
-
     --sidebar-accent: 240 4.8% 95.9%;
-
     --sidebar-accent-foreground: 240 5.9% 10%;
-
     --sidebar-border: 220 13% 91%;
-
     --sidebar-ring: 217.2 91.2% 59.8%;
   }
 

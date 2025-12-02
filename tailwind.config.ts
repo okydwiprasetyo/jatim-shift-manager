@@ -47,6 +47,16 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        shift: {
+          pagi: "hsl(var(--shift-pagi))",
+          "pagi-foreground": "hsl(var(--shift-pagi-foreground))",
+          sore: "hsl(var(--shift-sore))",
+          "sore-foreground": "hsl(var(--shift-sore-foreground))",
+          malam: "hsl(var(--shift-malam))",
+          "malam-foreground": "hsl(var(--shift-malam-foreground))",
+          off: "hsl(var(--shift-off))",
+          "off-foreground": "hsl(var(--shift-off-foreground))",
+        },
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",
           foreground: "hsl(var(--sidebar-foreground))",
