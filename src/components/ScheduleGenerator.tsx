@@ -57,74 +57,139 @@ export const ScheduleGenerator = ({ baseSchedule, employees, onGenerate }: Sched
       employees.forEach((emp, empIndex) => {
         newSchedule[emp.id] = {};
         
-        const offDays: number[] = [];
         const totalOffDays = 10;
+        const offDays: number[] = [];
         
-        // Select 2 weekend OFFs distributed based on employee index
-        const weekendOffCount = 2;
-        const selectedWeekendDays: number[] = [];
+        // Step 1: Select 2 weekend OFF periods (each weekend = 2 consecutive days ideally)
+        // We'll pick 2 different weekend pairs for each employee
+        const assignedWeekendPairs: number[][] = [];
         
         if (weekendPairs.length >= 2) {
-          // Distribute weekend OFFs fairly among employees
-          const firstWeekendIdx = empIndex % weekendPairs.length;
-          const secondWeekendIdx = (empIndex + Math.floor(weekendPairs.length / 2)) % weekendPairs.length;
+          const firstIdx = empIndex % weekendPairs.length;
+          const secondIdx = (empIndex + Math.floor(weekendPairs.length / 2) + 1) % weekendPairs.length;
           
-          // Pick one day from each weekend pair
-          const firstWeekend = weekendPairs[firstWeekendIdx];
-          const secondWeekend = weekendPairs[secondWeekendIdx !== firstWeekendIdx ? secondWeekendIdx : (secondWeekendIdx + 1) % weekendPairs.length];
-          
-          selectedWeekendDays.push(firstWeekend[empIndex % firstWeekend.length]);
-          if (secondWeekend && secondWeekend.length > 0) {
-            selectedWeekendDays.push(secondWeekend[(empIndex + 1) % secondWeekend.length]);
+          assignedWeekendPairs.push(weekendPairs[firstIdx]);
+          if (secondIdx !== firstIdx) {
+            assignedWeekendPairs.push(weekendPairs[secondIdx]);
           }
         }
         
-        offDays.push(...selectedWeekendDays);
-
-        // Calculate remaining OFF days needed
-        const remainingOffDays = totalOffDays - offDays.length;
-        
-        // Distribute remaining OFFs with work periods of 4-6 days
-        // Target: create work blocks of 4-6 days between OFFs
-        const workDaysCount = daysInMonth - totalOffDays; // 20-21 days of work
-        const targetWorkBlockSize = 5; // Average 5 days per block
-        const numBlocks = Math.ceil(workDaysCount / targetWorkBlockSize);
-        
-        // Place OFF days to create 4-6 day work blocks
-        const offPositions: number[] = [];
-        const blockSize = Math.floor(daysInMonth / (remainingOffDays + 1));
-        
-        for (let i = 1; i <= remainingOffDays; i++) {
-          let offDay = blockSize * i + (empIndex % 3);
-          // Avoid weekends already selected and stay in bounds
-          while (offDays.includes(offDay) || offPositions.includes(offDay) || offDay > daysInMonth || offDay < 1) {
-            offDay = ((offDay) % daysInMonth) + 1;
-          }
-          offPositions.push(offDay);
-        }
-        
-        offDays.push(...offPositions);
-        offDays.sort((a, b) => a - b);
-
-        // Ensure exactly 10 OFF days
-        while (offDays.length < totalOffDays) {
-          for (let day = 1; day <= daysInMonth && offDays.length < totalOffDays; day++) {
+        // Add weekend days to OFF (2-3 days per weekend period)
+        assignedWeekendPairs.forEach(pair => {
+          pair.forEach(day => {
             if (!offDays.includes(day)) {
               offDays.push(day);
-              offDays.sort((a, b) => a - b);
-              break;
+            }
+          });
+        });
+        
+        // Step 2: Distribute remaining OFF days in groups of 2-3 to create work periods of 4-6 days
+        // Target: 10 OFF days total, weekend OFFs already assigned
+        // We need to create OFF blocks of 2-3 days with work blocks of 4-6 days between them
+        
+        const remainingOffDays = totalOffDays - offDays.length;
+        
+        // Calculate how many additional OFF blocks we need (2-3 days each)
+        // With 10 total OFFs and ~4 from weekends, we need ~6 more in 2-3 blocks of 2-3 days
+        const additionalBlocks = Math.ceil(remainingOffDays / 2.5);
+        
+        // Find available positions for OFF blocks (avoiding existing OFFs and ensuring 4-6 day work gaps)
+        const workDays = daysInMonth - totalOffDays; // ~20-21 work days
+        const targetWorkBlockSize = 5; // Average 5 days between OFF periods
+        
+        // Create OFF positions distributed throughout the month
+        let currentDay = 1;
+        let offBlocksAdded = 0;
+        const offBlockPositions: number[] = [];
+        
+        // Sort existing off days to find gaps
+        offDays.sort((a, b) => a - b);
+        
+        // Find gaps between existing OFF periods and add new OFF blocks
+        const gaps: { start: number; end: number; length: number }[] = [];
+        let gapStart = 1;
+        
+        for (const offDay of offDays) {
+          if (offDay > gapStart) {
+            gaps.push({ start: gapStart, end: offDay - 1, length: offDay - gapStart });
+          }
+          gapStart = offDay + 1;
+        }
+        if (gapStart <= daysInMonth) {
+          gaps.push({ start: gapStart, end: daysInMonth, length: daysInMonth - gapStart + 1 });
+        }
+        
+        // Add OFF blocks in large gaps to ensure 4-6 day work periods
+        gaps.sort((a, b) => b.length - a.length); // Sort by length descending
+        
+        let remainingToAdd = remainingOffDays;
+        for (const gap of gaps) {
+          if (remainingToAdd <= 0) break;
+          
+          // If gap is larger than 6 days, we need to add OFF days
+          if (gap.length > 6) {
+            // Add OFF block in the middle of the gap
+            const blockSize = Math.min(remainingToAdd, Math.random() < 0.5 ? 2 : 3);
+            const blockStart = gap.start + Math.floor((gap.length - blockSize) / 2) + (empIndex % 3);
+            
+            for (let i = 0; i < blockSize && remainingToAdd > 0; i++) {
+              const day = Math.min(Math.max(blockStart + i, 1), daysInMonth);
+              if (!offDays.includes(day)) {
+                offDays.push(day);
+                remainingToAdd--;
+              }
             }
           }
         }
+        
+        // If still need more OFF days, add them ensuring consecutive groups of 2-3
+        while (remainingToAdd > 0) {
+          // Find a day that's not already OFF and not adjacent to existing single OFFs
+          for (let day = 1 + (empIndex % 5); day <= daysInMonth && remainingToAdd > 0; day++) {
+            if (!offDays.includes(day) && !offDays.includes(day + 1)) {
+              // Add 2-3 consecutive OFF days
+              const blockSize = Math.min(remainingToAdd, remainingToAdd >= 3 ? 3 : 2);
+              for (let i = 0; i < blockSize && day + i <= daysInMonth; i++) {
+                if (!offDays.includes(day + i)) {
+                  offDays.push(day + i);
+                  remainingToAdd--;
+                }
+              }
+              break;
+            }
+          }
+          // Safety exit
+          if (remainingToAdd > 0) {
+            for (let day = 1; day <= daysInMonth && remainingToAdd > 0; day++) {
+              if (!offDays.includes(day)) {
+                offDays.push(day);
+                remainingToAdd--;
+              }
+            }
+          }
+        }
+        
+        // Ensure exactly 10 OFF days
+        offDays.sort((a, b) => a - b);
         while (offDays.length > totalOffDays) {
-          offDays.pop();
+          // Remove isolated single OFFs first
+          for (let i = offDays.length - 1; i >= 0; i--) {
+            const day = offDays[i];
+            const prevIsOff = offDays.includes(day - 1);
+            const nextIsOff = offDays.includes(day + 1);
+            if (!prevIsOff && !nextIsOff) {
+              offDays.splice(i, 1);
+              break;
+            }
+          }
+          if (offDays.length > totalOffDays) {
+            offDays.pop();
+          }
         }
 
-        // Assign shifts: one shift type per work block (between OFFs)
-        let currentShiftIdx = empIndex % 3;
-        let currentDay = 1;
-        
-        // Find work blocks and assign single shift type to each
+        // Step 3: Assign shifts - one shift type per work block (between OFFs)
+        // Find work blocks
+        offDays.sort((a, b) => a - b);
         const workBlocks: { start: number; end: number }[] = [];
         let blockStart = 1;
         
@@ -136,19 +201,21 @@ export const ScheduleGenerator = ({ baseSchedule, employees, onGenerate }: Sched
             blockStart = day + 1;
           }
         }
-        if (blockStart <= daysInMonth) {
+        if (blockStart <= daysInMonth && !offDays.includes(daysInMonth)) {
           workBlocks.push({ start: blockStart, end: daysInMonth });
         }
 
-        // Assign shifts to each day
-        let blockIdx = 0;
+        // Assign shifts to each day - rotate shift types per block
+        let currentShiftIdx = empIndex % 3;
+        let currentBlockIdx = 0;
+        
         for (let day = 1; day <= daysInMonth; day++) {
           if (offDays.includes(day)) {
             newSchedule[emp.id][day] = 'OFF';
           } else {
-            // Find which block this day belongs to
-            while (blockIdx < workBlocks.length - 1 && day > workBlocks[blockIdx].end) {
-              blockIdx++;
+            // Check if we moved to next block
+            while (currentBlockIdx < workBlocks.length - 1 && day > workBlocks[currentBlockIdx].end) {
+              currentBlockIdx++;
               currentShiftIdx = (currentShiftIdx + 1) % 3;
             }
             newSchedule[emp.id][day] = workShifts[currentShiftIdx];
@@ -261,8 +328,9 @@ export const ScheduleGenerator = ({ baseSchedule, employees, onGenerate }: Sched
             <li>✓ Setiap karyawan mendapat <strong>2x weekend off</strong> per bulan</li>
             <li>✓ Setiap periode kerja menggunakan <strong>1 jenis shift</strong> saja</li>
             <li>✓ Periode kerja <strong>minimal 4 hari, maksimal 6 hari</strong></li>
+            <li>✓ Periode OFF <strong>minimal 2 hari, maksimal 3 hari</strong> berturut-turut</li>
             <li>✓ Setiap weekend harus diisi <strong>1 orang per shift</strong></li>
-            <li className="text-xs italic mt-2">Contoh: OFF → P-P-P-P-P → OFF (bukan OFF → P-S-M-P-S → OFF)</li>
+            <li className="text-xs italic mt-2">Contoh: OFF-OFF → P-P-P-P-P → OFF-OFF (bukan P → OFF → P)</li>
           </ul>
         </div>
 
