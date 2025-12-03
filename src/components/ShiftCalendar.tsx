@@ -4,7 +4,9 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { MonthSchedule, ShiftType, Employee } from '@/types/shift';
 import { getShiftColor, getDaysInMonth } from '@/lib/shiftUtils';
+import { isWeekendOrHoliday } from '@/lib/indonesianHolidays';
 import { Edit2, Save, X } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface ShiftCalendarProps {
   schedule: MonthSchedule;
@@ -76,11 +78,26 @@ export const ShiftCalendar = ({ schedule, employees, onUpdate }: ShiftCalendarPr
               <th className="border border-border p-2 text-sm font-semibold sticky left-0 bg-primary z-10">
                 Nama
               </th>
-              {days.map(day => (
-                <th key={day} className="border border-border p-2 text-sm font-semibold min-w-[50px]">
-                  {day}
-                </th>
-              ))}
+              {days.map(day => {
+                const { isWeekend, isHoliday, holidayName } = isWeekendOrHoliday(schedule.year, schedule.month, day);
+                const isRedDate = isWeekend || isHoliday;
+                return (
+                  <TooltipProvider key={day}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <th className={`border border-border p-2 text-sm font-semibold min-w-[50px] ${isRedDate ? 'bg-red-600 text-white' : ''}`}>
+                          {day}
+                        </th>
+                      </TooltipTrigger>
+                      {(isWeekend || isHoliday) && (
+                        <TooltipContent>
+                          <p>{holidayName || (isWeekend ? 'Weekend' : '')}</p>
+                        </TooltipContent>
+                      )}
+                    </Tooltip>
+                  </TooltipProvider>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
