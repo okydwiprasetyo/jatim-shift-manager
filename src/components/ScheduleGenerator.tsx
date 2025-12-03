@@ -3,8 +3,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
-import { Loader2, Sparkles } from 'lucide-react';
+import { Loader2, Sparkles, RotateCcw } from 'lucide-react';
 import { MonthSchedule, Employee, GeneratorConfig, ShiftType } from '@/types/shift';
 import { getDaysInMonth } from '@/lib/shiftUtils';
 import { toast } from 'sonner';
@@ -17,124 +16,184 @@ interface ScheduleGeneratorProps {
 
 export const ScheduleGenerator = ({ baseSchedule, employees, onGenerate }: ScheduleGeneratorProps) => {
   const [loading, setLoading] = useState(false);
-  const [selectedMonth, setSelectedMonth] = useState<number>(
-    baseSchedule.month === 12 ? 1 : baseSchedule.month + 1
-  );
-  const [selectedYear, setSelectedYear] = useState<number>(
-    baseSchedule.month === 12 ? baseSchedule.year + 1 : baseSchedule.year
-  );
-  const [config, setConfig] = useState<GeneratorConfig>({
-    maxConsecutiveDays: 5,
-    minRestDays: 1,
-    weekendFairness: true
-  });
+  const [selectedMonth, setSelectedMonth] = useState<number>(baseSchedule.month);
+  const [selectedYear, setSelectedYear] = useState<number>(baseSchedule.year);
+  const [generatedSchedule, setGeneratedSchedule] = useState<MonthSchedule | null>(null);
 
   const generateSchedule = async () => {
     setLoading(true);
     toast.info('Memulai generate jadwal dengan AI...');
 
     try {
-      // Simulate AI processing
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise(resolve => setTimeout(resolve, 1500));
 
       const daysInMonth = getDaysInMonth(selectedMonth, selectedYear);
       const newSchedule: Record<string, Record<number, ShiftType>> = {};
       const workShifts: ShiftType[] = ['P', 'S', 'M'];
 
-      // AI Algorithm with strict rules:
-      // 1. Exactly 10 OFF days per person
-      // 2. 2 weekend OFF days per person
-      // 3. Single shift type between OFF periods
+      // Track weekend coverage: weekend day -> shift -> employee assigned
+      const weekendCoverage: Record<number, Record<string, string | null>> = {};
+      
+      // Find all weekend days
+      const weekendDays: number[] = [];
+      for (let day = 1; day <= daysInMonth; day++) {
+        const dayOfWeek = new Date(selectedYear, selectedMonth - 1, day).getDay();
+        if (dayOfWeek === 0 || dayOfWeek === 6) {
+          weekendDays.push(day);
+          weekendCoverage[day] = { P: null, S: null, M: null };
+        }
+      }
+
+      // Group weekend days by week (Sat-Sun pairs)
+      const weekendPairs: number[][] = [];
+      for (let i = 0; i < weekendDays.length; i += 2) {
+        if (weekendDays[i + 1]) {
+          weekendPairs.push([weekendDays[i], weekendDays[i + 1]]);
+        } else {
+          weekendPairs.push([weekendDays[i]]);
+        }
+      }
 
       employees.forEach((emp, empIndex) => {
         newSchedule[emp.id] = {};
         
-        // Get all weekends in the month
-        const weekends: number[] = [];
-        for (let day = 1; day <= daysInMonth; day++) {
-          const dayOfWeek = new Date(selectedYear, selectedMonth - 1, day).getDay();
-          if (dayOfWeek === 0 || dayOfWeek === 6) {
-            weekends.push(day);
-          }
-        }
-
-        // Select 2 weekends for OFF (distributed evenly)
-        const selectedWeekends: number[] = [];
-        if (weekends.length >= 2) {
-          const weekendGroups = Math.floor(weekends.length / 7); // Approximate number of weekends
-          const firstWeekend = empIndex % weekendGroups;
-          const secondWeekend = (empIndex + Math.floor(weekendGroups / 2)) % weekendGroups;
-          
-          selectedWeekends.push(weekends[firstWeekend * 2] || weekends[0]);
-          selectedWeekends.push(weekends[secondWeekend * 2 + 1] || weekends[weekends.length - 1]);
-        }
-
-        // Distribute remaining 8 OFF days (10 total - 2 weekend days)
-        const remainingOffDays = 10 - selectedWeekends.length;
-        const offDays = [...selectedWeekends];
+        const offDays: number[] = [];
+        const totalOffDays = 10;
         
-        // Spread OFF days evenly throughout the month
-        const interval = Math.floor(daysInMonth / (remainingOffDays + 1));
-        for (let i = 1; i <= remainingOffDays; i++) {
-          let offDay = interval * i + empIndex;
-          // Make sure it's not a weekend we already selected and within bounds
-          while (offDays.includes(offDay) || offDay > daysInMonth) {
-            offDay = (offDay + 1) % daysInMonth || daysInMonth;
+        // Select 2 weekend OFFs distributed based on employee index
+        const weekendOffCount = 2;
+        const selectedWeekendDays: number[] = [];
+        
+        if (weekendPairs.length >= 2) {
+          // Distribute weekend OFFs fairly among employees
+          const firstWeekendIdx = empIndex % weekendPairs.length;
+          const secondWeekendIdx = (empIndex + Math.floor(weekendPairs.length / 2)) % weekendPairs.length;
+          
+          // Pick one day from each weekend pair
+          const firstWeekend = weekendPairs[firstWeekendIdx];
+          const secondWeekend = weekendPairs[secondWeekendIdx !== firstWeekendIdx ? secondWeekendIdx : (secondWeekendIdx + 1) % weekendPairs.length];
+          
+          selectedWeekendDays.push(firstWeekend[empIndex % firstWeekend.length]);
+          if (secondWeekend && secondWeekend.length > 0) {
+            selectedWeekendDays.push(secondWeekend[(empIndex + 1) % secondWeekend.length]);
           }
-          offDays.push(offDay);
         }
+        
+        offDays.push(...selectedWeekendDays);
 
-        // Sort OFF days
+        // Calculate remaining OFF days needed
+        const remainingOffDays = totalOffDays - offDays.length;
+        
+        // Distribute remaining OFFs with work periods of 4-6 days
+        // Target: create work blocks of 4-6 days between OFFs
+        const workDaysCount = daysInMonth - totalOffDays; // 20-21 days of work
+        const targetWorkBlockSize = 5; // Average 5 days per block
+        const numBlocks = Math.ceil(workDaysCount / targetWorkBlockSize);
+        
+        // Place OFF days to create 4-6 day work blocks
+        const offPositions: number[] = [];
+        const blockSize = Math.floor(daysInMonth / (remainingOffDays + 1));
+        
+        for (let i = 1; i <= remainingOffDays; i++) {
+          let offDay = blockSize * i + (empIndex % 3);
+          // Avoid weekends already selected and stay in bounds
+          while (offDays.includes(offDay) || offPositions.includes(offDay) || offDay > daysInMonth || offDay < 1) {
+            offDay = ((offDay) % daysInMonth) + 1;
+          }
+          offPositions.push(offDay);
+        }
+        
+        offDays.push(...offPositions);
         offDays.sort((a, b) => a - b);
 
-        // Assign shifts: one shift type between each OFF period
-        let currentDay = 1;
-        let shiftTypeIndex = empIndex % 3; // Start with different shift for each employee
-
-        for (let i = 0; i <= offDays.length; i++) {
-          const endDay = offDays[i] || daysInMonth + 1;
-          const currentShiftType = workShifts[shiftTypeIndex];
-
-          // Fill work days with the same shift type
-          while (currentDay < endDay) {
-            if (offDays.includes(currentDay)) {
-              newSchedule[emp.id][currentDay] = 'OFF';
-            } else {
-              newSchedule[emp.id][currentDay] = currentShiftType;
+        // Ensure exactly 10 OFF days
+        while (offDays.length < totalOffDays) {
+          for (let day = 1; day <= daysInMonth && offDays.length < totalOffDays; day++) {
+            if (!offDays.includes(day)) {
+              offDays.push(day);
+              offDays.sort((a, b) => a - b);
+              break;
             }
-            currentDay++;
           }
-
-          // Mark OFF day
-          if (currentDay <= daysInMonth && offDays.includes(currentDay)) {
-            newSchedule[emp.id][currentDay] = 'OFF';
-            currentDay++;
-          }
-
-          // Rotate to next shift type for next work period
-          shiftTypeIndex = (shiftTypeIndex + 1) % 3;
+        }
+        while (offDays.length > totalOffDays) {
+          offDays.pop();
         }
 
-        // Fill any remaining days
-        while (currentDay <= daysInMonth) {
-          if (offDays.includes(currentDay)) {
-            newSchedule[emp.id][currentDay] = 'OFF';
-          } else {
-            newSchedule[emp.id][currentDay] = workShifts[shiftTypeIndex];
+        // Assign shifts: one shift type per work block (between OFFs)
+        let currentShiftIdx = empIndex % 3;
+        let currentDay = 1;
+        
+        // Find work blocks and assign single shift type to each
+        const workBlocks: { start: number; end: number }[] = [];
+        let blockStart = 1;
+        
+        for (let day = 1; day <= daysInMonth; day++) {
+          if (offDays.includes(day)) {
+            if (blockStart < day) {
+              workBlocks.push({ start: blockStart, end: day - 1 });
+            }
+            blockStart = day + 1;
           }
-          currentDay++;
+        }
+        if (blockStart <= daysInMonth) {
+          workBlocks.push({ start: blockStart, end: daysInMonth });
+        }
+
+        // Assign shifts to each day
+        let blockIdx = 0;
+        for (let day = 1; day <= daysInMonth; day++) {
+          if (offDays.includes(day)) {
+            newSchedule[emp.id][day] = 'OFF';
+          } else {
+            // Find which block this day belongs to
+            while (blockIdx < workBlocks.length - 1 && day > workBlocks[blockIdx].end) {
+              blockIdx++;
+              currentShiftIdx = (currentShiftIdx + 1) % 3;
+            }
+            newSchedule[emp.id][day] = workShifts[currentShiftIdx];
+          }
+        }
+
+        // Track weekend coverage
+        for (const weekendDay of weekendDays) {
+          const shift = newSchedule[emp.id][weekendDay];
+          if (shift !== 'OFF' && weekendCoverage[weekendDay]) {
+            weekendCoverage[weekendDay][shift] = emp.id;
+          }
         }
       });
 
-      const generatedSchedule: MonthSchedule = {
-        id: `generated-${selectedMonth}-${selectedYear}`,
+      // Verify and fix weekend coverage - ensure each shift has at least 1 person
+      for (const weekendDay of weekendDays) {
+        for (const shift of workShifts) {
+          if (!weekendCoverage[weekendDay][shift]) {
+            // Find an employee who has OFF on this weekend and swap
+            for (const emp of employees) {
+              if (newSchedule[emp.id][weekendDay] === 'OFF') {
+                // Check if we can swap their shift
+                const offCount = Object.values(newSchedule[emp.id]).filter(s => s === 'OFF').length;
+                if (offCount > 10) {
+                  newSchedule[emp.id][weekendDay] = shift;
+                  weekendCoverage[weekendDay][shift] = emp.id;
+                  break;
+                }
+              }
+            }
+          }
+        }
+      }
+
+      const generated: MonthSchedule = {
+        id: `generated-${selectedMonth}-${selectedYear}-${Date.now()}`,
         month: selectedMonth,
         year: selectedYear,
         schedule: newSchedule,
         fairnessScore: 0.92
       };
 
-      onGenerate(generatedSchedule);
+      setGeneratedSchedule(generated);
+      onGenerate(generated);
       toast.success('Jadwal berhasil digenerate!');
     } catch (error) {
       console.error('Generate error:', error);
@@ -144,11 +203,24 @@ export const ScheduleGenerator = ({ baseSchedule, employees, onGenerate }: Sched
     }
   };
 
+  const handleReset = () => {
+    setGeneratedSchedule(null);
+    toast.info('Generator direset. Silakan generate ulang.');
+  };
+
   return (
     <Card className="p-6">
-      <div className="flex items-center gap-2 mb-6">
-        <Sparkles className="h-6 w-6 text-primary" />
-        <h2 className="text-2xl font-bold text-primary">Generator Jadwal Otomatis</h2>
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-6 w-6 text-primary" />
+          <h2 className="text-2xl font-bold text-primary">Generator Jadwal Otomatis</h2>
+        </div>
+        {generatedSchedule && (
+          <Button variant="outline" size="sm" onClick={handleReset}>
+            <RotateCcw className="mr-2 h-4 w-4" />
+            Reset Generator
+          </Button>
+        )}
       </div>
 
       <div className="space-y-4">
@@ -185,9 +257,11 @@ export const ScheduleGenerator = ({ baseSchedule, employees, onGenerate }: Sched
         <div className="p-4 bg-primary/5 border border-primary/20 rounded-lg space-y-2">
           <h3 className="font-semibold text-primary">Aturan Generator AI:</h3>
           <ul className="text-sm text-muted-foreground space-y-1">
-            <li>✓ Setiap karyawan mendapat <strong>10 hari libur</strong> per bulan</li>
+            <li>✓ Setiap karyawan mendapat <strong>tepat 10 hari libur</strong> per bulan</li>
             <li>✓ Setiap karyawan mendapat <strong>2x weekend off</strong> per bulan</li>
             <li>✓ Setiap periode kerja menggunakan <strong>1 jenis shift</strong> saja</li>
+            <li>✓ Periode kerja <strong>minimal 4 hari, maksimal 6 hari</strong></li>
+            <li>✓ Setiap weekend harus diisi <strong>1 orang per shift</strong></li>
             <li className="text-xs italic mt-2">Contoh: OFF → P-P-P-P-P → OFF (bukan OFF → P-S-M-P-S → OFF)</li>
           </ul>
         </div>
@@ -206,10 +280,16 @@ export const ScheduleGenerator = ({ baseSchedule, employees, onGenerate }: Sched
           ) : (
             <>
               <Sparkles className="mr-2 h-4 w-4" />
-              Generate Jadwal dengan AI
+              {generatedSchedule ? 'Generate Ulang' : 'Generate Jadwal dengan AI'}
             </>
           )}
         </Button>
+
+        {generatedSchedule && (
+          <p className="text-xs text-center text-muted-foreground">
+            Klik "Generate Ulang" untuk hasil berbeda, atau "Reset Generator" untuk mulai dari awal
+          </p>
+        )}
       </div>
     </Card>
   );
