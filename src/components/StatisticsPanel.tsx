@@ -64,7 +64,7 @@ export const StatisticsPanel = ({ schedule, employees }: StatisticsPanelProps) =
           <li>• Setiap karyawan diusahakan mendapat libur 2x weekend dalam sebulan</li>
           <li>• Distribusi shift harus merata untuk keadilan</li>
           <li>• Max consecutive days: 5 hari berturut-turut</li>
-          <li>• Min rest days: 1 hari istirahat setelah shift malam</li>
+          <li>• Periode kerja: minimal 4 hari, maksimal 6 hari</li>
         </ul>
       </div>
     </Card>

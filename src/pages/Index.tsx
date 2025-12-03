@@ -122,6 +122,15 @@ const Index = () => {
           baseSchedule={currentSchedule}
           employees={employees}
           onGenerate={handleGenerateSchedule}
+          onReset={() => {
+            // Reset schedule to empty
+            const emptySchedule: MonthSchedule = {
+              ...currentSchedule,
+              schedule: {},
+              fairnessScore: 0
+            };
+            handleScheduleUpdate(emptySchedule);
+          }}
         />
 
         {/* Footer Notes */}
